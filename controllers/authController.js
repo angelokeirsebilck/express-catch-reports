@@ -1,4 +1,8 @@
+const fetch = require('node-fetch');
+
 const User = require('../models/User');
+const Profile = require('../models/Profile');
+
 const Token = require('../models/Token');
 const { StatusCodes } = require('http-status-codes');
 const CustomError = require('../errors');
@@ -12,7 +16,7 @@ const {
 const crypto = require('crypto');
 
 const register = async (req, res) => {
-  const { email, name, password } = req.body;
+  const { email, password } = req.body;
 
   const emailAlreadyExists = await User.findOne({ email });
   if (emailAlreadyExists) {
@@ -22,11 +26,29 @@ const register = async (req, res) => {
   const verificationToken = crypto.randomBytes(40).toString('hex');
 
   const user = await User.create({
-    name,
     email,
     password,
     verificationToken,
   });
+
+  if (!user) {
+    throw new CustomError.BadRequestError(
+      'Something went wrong, please try again later'
+    );
+  }
+
+  const profile = Profile.create({
+    email: user.email,
+    userId: user._id,
+  });
+
+  if (!profile) {
+    User.findByIdAndDelete({ _id: user._id });
+
+    throw new CustomError.BadRequestError(
+      'Something went wrong, please try again later'
+    );
+  }
 
   // const newOrigin = 'https://react-node-user-workflow-front-end.netlify.app';
 
@@ -37,11 +59,11 @@ const register = async (req, res) => {
   // const forwardedProtocol = req.get('x-forwarded-proto');
 
   await sendVerificationEmail({
-    name: user.name,
     email: user.email,
     verificationToken: user.verificationToken,
     origin: process.env.FRONT_ORIGIN,
   });
+
   // send verification token back only while testing in postman!!!
   res.status(StatusCodes.CREATED).json({
     msg: 'Success! Please check your email to verify account',
@@ -88,35 +110,91 @@ const login = async (req, res) => {
     throw new CustomError.UnauthenticatedError('Please verify your email');
   }
 
-  const tokenUser = createTokenUser(user);
+  const profile = await Profile.findOne({
+    email: user.email,
+    userId: user._id,
+  });
 
-  // // create refresh token
-  // let refreshToken = '';
-  // // check for existing token
-  // const existingToken = await Token.findOne({ user: user._id });
+  const jwtToken = createJWT({ payload: profile.toJSON() });
 
-  // if (existingToken) {
-  //   const { isValid } = existingToken;
-  //   if (!isValid) {
-  //     throw new CustomError.UnauthenticatedError('Invalid Credentials');
-  //   }
-  //   refreshToken = existingToken.refreshToken;
-  //   attachCookiesToResponse({ res, user: tokenUser, refreshToken });
-  //   res.status(StatusCodes.OK).json({ user: tokenUser });
-  //   return;
-  // }
-
-  // refreshToken = crypto.randomBytes(40).toString('hex');
-  // const userAgent = req.headers['user-agent'];
-  // const ip = req.ip;
-  // const userToken = { refreshToken, ip, userAgent, user: user._id };
-
-  // await Token.create(userToken);
-
-  // attachCookiesToResponse({ res, user: tokenUser, refreshToken });
-  const jwtToken = createJWT({ payload: tokenUser });
-  res.status(StatusCodes.OK).json({ user: tokenUser, token: jwtToken });
+  res.status(StatusCodes.OK).json({ profile: profile, token: jwtToken });
 };
+
+const fbLogin = async (req, res) => {
+  const { accessToken } = req.body;
+
+  if (!accessToken) {
+    throw new CustomError.BadRequestError('Bad request');
+  }
+
+  const data = await fetch(
+    `https://graph.facebook.com/me?fields=email,first_name,last_name,picture.type(large)&access_token=${accessToken}`
+  );
+
+  const result = await data.json();
+  if (result.error) {
+    throw new CustomError.BadRequestError(result.error.message);
+  }
+
+  const profile = await Profile.findOneAndUpdate(
+    {
+      userId: result.id,
+    },
+    {
+      firstName: result?.first_name,
+      lastName: result?.last_name,
+      email: result?.email,
+      pictureURL: result?.picture?.data?.url,
+    },
+    {
+      upsert: true,
+      new: true,
+    }
+  );
+
+  const jwtToken = createJWT({ payload: profile.toJSON() });
+
+  res.status(StatusCodes.OK).json({ profile: profile, token: jwtToken });
+};
+
+const googleLogin = async (req, res) => {
+  const { accessToken } = req.body;
+
+  if (!accessToken) {
+    throw new CustomError.BadRequestError('Bad request');
+  }
+
+  let data = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  const result = await data.json();
+
+  if (result.error) {
+    throw new CustomError.BadRequestError(result.error.message);
+  }
+
+  const profile = await Profile.findOneAndUpdate(
+    {
+      userId: result.id,
+    },
+    {
+      firstName: result?.given_name,
+      lastName: result?.family_name,
+      email: result?.email,
+      pictureURL: result?.picture,
+    },
+    {
+      upsert: true,
+      new: true,
+    }
+  );
+
+  const jwtToken = createJWT({ payload: profile.toJSON() });
+
+  res.status(StatusCodes.OK).json({ profile: profile, token: jwtToken });
+};
+
 const logout = async (req, res) => {
   await Token.findOneAndDelete({ user: req.user.userId });
 
@@ -193,4 +271,6 @@ module.exports = {
   verifyEmail,
   forgotPassword,
   resetPassword,
+  fbLogin,
+  googleLogin,
 };
