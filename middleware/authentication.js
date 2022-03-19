@@ -1,6 +1,5 @@
 const CustomError = require('../errors');
 const { isTokenValid } = require('../utils');
-const Token = require('../models/Token');
 
 const authenticateUser = async (req, res, next) => {
   const authHeader = req.headers.authorization;

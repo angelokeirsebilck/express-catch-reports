@@ -3,12 +3,10 @@ const fetch = require('node-fetch');
 const User = require('../models/User');
 const Profile = require('../models/Profile');
 
-const Token = require('../models/Token');
 const { StatusCodes } = require('http-status-codes');
 const CustomError = require('../errors');
 const {
   createJWT,
-  createTokenUser,
   sendVerificationEmail,
   sendResetPasswordEmail,
   createHash,
@@ -49,14 +47,6 @@ const register = async (req, res) => {
       'Something went wrong, please try again later'
     );
   }
-
-  // const newOrigin = 'https://react-node-user-workflow-front-end.netlify.app';
-
-  // const tempOrigin = req.get('origin');
-  // const protocol = req.protocol;
-  // const host = req.get('host');
-  // const forwardedHost = req.get('x-forwarded-host');
-  // const forwardedProtocol = req.get('x-forwarded-proto');
 
   await sendVerificationEmail({
     email: user.email,
@@ -220,12 +210,10 @@ const forgotPassword = async (req, res) => {
   if (user) {
     const passwordToken = crypto.randomBytes(70).toString('hex');
     // send email
-    const origin = 'http://localhost:3000';
     await sendResetPasswordEmail({
-      name: user.name,
       email: user.email,
       token: passwordToken,
-      origin,
+      origin: process.env.FRONT_ORIGIN,
     });
 
     const tenMinutes = 1000 * 60 * 10;
@@ -240,6 +228,7 @@ const forgotPassword = async (req, res) => {
     .status(StatusCodes.OK)
     .json({ msg: 'Please check your email for reset password link' });
 };
+
 const resetPassword = async (req, res) => {
   const { token, email, password } = req.body;
   if (!token || !email || !password) {
@@ -261,7 +250,7 @@ const resetPassword = async (req, res) => {
     }
   }
 
-  res.send('reset password');
+  res.send('Password changed.');
 };
 
 module.exports = {

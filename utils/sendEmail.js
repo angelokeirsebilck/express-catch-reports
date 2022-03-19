@@ -1,17 +1,16 @@
-const nodemailer = require('nodemailer');
-const nodemailerConfig = require('./nodemailerConfig');
+const sgMail = require('@sendgrid/mail');
 
 const sendEmail = async ({ to, subject, html }) => {
-  let testAccount = await nodemailer.createTestAccount();
-
-  const transporter = nodemailer.createTransport(nodemailerConfig);
-
-  return transporter.sendMail({
-    from: '"Catch Reports" <info@angelokeirsebilck.be>', // sender address
-    to,
+  sgMail.setApiKey(process.env.SENDGRID_API);
+  const msg = {
+    to, // Change to your recipient
+    from: 'info@angelokeirsebilck.be',
     subject,
     html,
-  });
+  };
+  const info = await sgMail.send(msg);
+  console.log(info);
+  return info;
 };
 
 module.exports = sendEmail;

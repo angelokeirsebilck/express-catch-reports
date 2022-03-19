@@ -3,8 +3,10 @@ const validator = require('validator');
 
 const ProfileSchema = new mongoose.Schema({
   userId: {
-    type: String,
+    type: mongoose.Types.ObjectId,
+    ref: 'User',
     required: true,
+    unique: true,
   },
   firstName: {
     type: String,
@@ -24,7 +26,5 @@ const ProfileSchema = new mongoose.Schema({
     type: String,
   },
 });
-
-ProfileSchema.index({ email: 1, userId: 1 }, { required: true });
 
 module.exports = mongoose.model('Profile', ProfileSchema);
